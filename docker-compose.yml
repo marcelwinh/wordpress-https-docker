@@ -1,0 +1,78 @@
+version: '3.6'
+services:
+  mysql:
+    image: mysql:${MYSQL_VERSION}
+    container_name: mysql
+    volumes:
+      - ${MYSQL_DATA_DIR}:/var/lib/mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+    restart: always
+    networks:
+      - wordpress
+  
+  wordpress:
+    image: wordpress:${WORDPRESS_VERSION}
+    container_name: wordpress
+    volumes:
+      - ${WORDPRESS_DATA_DIR}:/var/www/html
+      - ${WORDPRESS_PHP_UPLOADS_INI}:/usr/local/etc/php/conf.d/uploads.ini
+    environment:
+      - WORDPRESS_DB_NAME=${MYSQL_DATABASE}
+      - WORDPRESS_TABLE_PREFIX=${WORDPRESS_TABLE_PREFIX}
+      - WORDPRESS_DB_HOST=mysql
+      - WORDPRESS_DB_USER=${MYSQL_USER}
+      - WORDPRESS_DB_PASSWORD=${MYSQL_PASSWORD}
+    depends_on:
+      - mysql
+    restart: always
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.wordpress.rule=Host(`${WORDPRESS_DOMAIN}`)"
+      - "traefik.http.routers.wordpress.tls.certresolver=myresolver"
+      - "traefik.http.middlewares.servicests.headers.stsincludesubdomains=false"
+      - "traefik.http.middlewares.servicests.headers.stspreload=true"
+      - "traefik.http.middlewares.servicests.headers.stsseconds=31536000"
+      - "traefik.http.middlewares.servicests.headers.isdevelopment=false"
+      - "traefik.http.routers.wordpress.middlewares=servicests"
+    networks:
+      - wordpress
+      - traefik
+
+  traefik:
+    image: "traefik:v2.10"
+    container_name: "traefik"
+    command:
+    # DEBUG ONLY
+    #- "--log.level=DEBUG"
+    #- "--api.insecure=true"
+    # DEBUG ONLY
+    - "--providers.docker=true"
+    - "--providers.docker.exposedbydefault=false"
+    - "--entrypoints.web.address=:80"
+    - "--entrypoints.websecure.address=:443"
+    - "--certificatesresolvers.myresolver.acme.tlschallenge=true"
+    - "--certificatesresolvers.myresolver.acme.email=admin@winheim.dev"
+    - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
+    ports:
+    - "80:80"
+    - "443:443"
+    # DEBUG ONLY
+    #- "8080:8080"
+    # DEBUG ONLY
+    volumes:
+    - "${TRAEFIK_LETS_ENCRYPT}:/letsencrypt"
+    - "/var/run/docker.sock:/var/run/docker.sock:ro"
+    networks:
+      - traefik
+
+networks:
+  traefik:
+    name: traefik
+    driver: bridge
+  wordpress:
+    name: wordpress
+    driver: bridge
